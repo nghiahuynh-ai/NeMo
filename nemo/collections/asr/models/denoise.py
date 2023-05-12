@@ -217,7 +217,6 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
     def forward(self, input_patch, input_patch_length):
         return self.encoder(audio_signal=input_patch, length=input_patch_length)
 
-    # PTL-specific methods
     def training_step(self, batch, batch_nb):
         signal, signal_len, _, _ = batch
         
@@ -247,37 +246,36 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         tensorboard_logs = {
             'learning_rate': self._optimizer.param_groups[0]['lr'],
             'global_step': self.trainer.global_step,
-            'loss': loss_value,
+            'train_loss': loss_value,
         }
 
         return {'loss': loss_value, 'log': tensorboard_logs}
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        # Set flag to register tensors
-        self._in_validation_step = True
-
-        signal, signal_len, targets, target_lengths = batch
-        if isinstance(batch, DALIOutputs) and batch.has_processed_signal:
-            spectrograms, spec_masks, encoded, encoded_len = self.forward(
-                processed_signal=signal, processed_signal_length=signal_len,
-            )
-        else:
-            spectrograms, spec_masks, encoded, encoded_len = self.forward(
-                input_signal=signal, input_signal_length=signal_len,
-            )
-
-        if self.decoder_losses is not None:
-            for dec_loss_name, dec_loss in self.decoder_losses.items():
-                self.decoder_losses_active[dec_loss_name] = self.trainer.global_step >= self.start_step[dec_loss_name]
-
-        loss_value, _ = self.decoder_loss_step(spectrograms, spec_masks, encoded, encoded_len, targets, target_lengths)
-
-        if self.feat_pen:
-            loss_value += self.feat_pen
-
-        # reset access registry
-        self.reset_registry()
-        del self._in_validation_step
+        signal, signal_len, _, _ = batch
+        
+        clean_spec, clean_spec_len = self.preprocessor(input_signal=signal, length=signal_len)
+        noisy_signal = self.noise_mixer(signal)
+        noisy_spec, _ = self.preprocessor(input_signal=noisy_signal, length=signal_len)
+        del signal
+        
+        max_spec_len = math.ceil(clean_spec_len / self.patch_size) * self.patch_size
+        pad = (0, max_spec_len - clean_spec_len)
+        clean_spec = torch.nn.functional.pad(clean_spec, pad, value=0.0)
+        noisy_spec = torch.nn.functional.pad(noisy_spec, pad, value=0.0)
+        
+        patch = self.patchifier(noisy_spec)
+        
+        patch, _ = self.forward(
+            input_patch=patch, input_patch_length=patch.size(2),
+        )
+        
+        denoised_spec = self.unpatchifier(patch)
+        
+        for ith in range(len(denoised_spec)):
+            denoised_spec[ith, :,clean_spec_len[ith]:] = 0.0
+            
+        loss_value = torch.nn.functional.mse_loss(clean_spec, denoised_spec)
 
         return {
             'val_loss': loss_value,
