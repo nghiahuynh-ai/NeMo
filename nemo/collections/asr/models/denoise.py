@@ -310,8 +310,8 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
             denoised_spec[ith, :,clean_spec_len[ith]:] = 0.0
             
         loss_value = torch.nn.functional.mse_loss(clean_spec, denoised_spec)
-        ssim = self.metrics['ssim'](denoised_spec, clean_spec)
-        psnr = self.metrics['psnr'](denoised_spec, clean_spec)
+        ssim = self.metrics['ssim'](denoised_spec.unsqueeze(1), clean_spec.unsqueeze(1))
+        psnr = self.metrics['psnr'](denoised_spec.unsqueeze(1), clean_spec.unsqueeze(1))
 
         tensorboard_logs = {'val_loss': loss_value, 'ssim': ssim, 'psnr': psnr}
         self.log_dict(tensorboard_logs)
