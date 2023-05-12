@@ -85,7 +85,10 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
             white_noise_std=self._cfg.white_noise.std,
         )
         
-        self.metrics = {'ssim': StructuralSimilarityIndexMeasure(), 'psnr': PeakSignalNoiseRatio()}
+        self.metrics = {
+            'ssim': StructuralSimilarityIndexMeasure().to(self.device), 
+            'psnr': PeakSignalNoiseRatio().to(self.device)
+        }
 
     def _setup_dataloader_from_config(self, config: Optional[Dict]):
         if 'augmentor' in config:
