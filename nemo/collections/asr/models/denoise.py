@@ -242,7 +242,7 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         
         patch = self.patchifier(noisy_spec)
         
-        patch_len = torch.tensor([patch.size(2)]*patch.size(0))
+        patch_len = torch.tensor([patch.size(2)]*patch.size(0)).to(patch.device)
         
         patch, _ = self.forward(input_patch=patch, input_patch_length=patch_len)
         
@@ -284,7 +284,7 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         
         patch = self.patchifier(noisy_spec)
         
-        patch_len = torch.tensor([patch.size(2)]*patch.size(0))
+        patch_len = torch.tensor([patch.size(2)]*patch.size(0)).to(patch.device)
         
         patch, _ = self.forward(input_patch=patch, input_patch_length=patch_len)
         
