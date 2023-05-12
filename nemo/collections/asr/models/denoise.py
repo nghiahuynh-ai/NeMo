@@ -227,10 +227,18 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         noisy_spec, _ = self.preprocessor(input_signal=noisy_signal, length=signal_len)
         del signal
         
-        max_spec_len = math.ceil(clean_spec_len / self.patch_size) * self.patch_size
-        pad = (0, max_spec_len - clean_spec_len)
-        clean_spec = torch.nn.functional.pad(clean_spec, pad, value=0.0)
-        noisy_spec = torch.nn.functional.pad(noisy_spec, pad, value=0.0)
+        max_spec_len = max(clean_spec_len).item()
+        max_spec_len = math.ceil(max_spec_len / self.patch_size) * self.patch_size
+        padding_clean_spec, padding_noisy_spec = [], []
+        for ith in range(len(clean_spec)):
+            pad = (0, max_spec_len - clean_spec_len[ith])
+            clean_spec_i = torch.nn.functional.pad(clean_spec[ith], pad, value=0.0)
+            padding_clean_spec.append(clean_spec_i)
+            noisy_spec_i = torch.nn.functional.pad(noisy_spec[ith], pad, value=0.0)
+            padding_noisy_spec.append(noisy_spec_i)
+        clean_spec = torch.stack(padding_clean_spec)
+        noisy_spec = torch.stack(padding_noisy_spec)
+        del padding_clean_spec, padding_noisy_spec
         
         patch = self.patchifier(noisy_spec)
         
@@ -261,10 +269,18 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         noisy_spec, _ = self.preprocessor(input_signal=noisy_signal, length=signal_len)
         del signal
         
-        max_spec_len = math.ceil(clean_spec_len / self.patch_size) * self.patch_size
-        pad = (0, max_spec_len - clean_spec_len)
-        clean_spec = torch.nn.functional.pad(clean_spec, pad, value=0.0)
-        noisy_spec = torch.nn.functional.pad(noisy_spec, pad, value=0.0)
+        max_spec_len = max(clean_spec_len).item()
+        max_spec_len = math.ceil(max_spec_len / self.patch_size) * self.patch_size
+        padding_clean_spec, padding_noisy_spec = [], []
+        for ith in range(len(clean_spec)):
+            pad = (0, max_spec_len - clean_spec_len[ith])
+            clean_spec_i = torch.nn.functional.pad(clean_spec[ith], pad, value=0.0)
+            padding_clean_spec.append(clean_spec_i)
+            noisy_spec_i = torch.nn.functional.pad(noisy_spec[ith], pad, value=0.0)
+            padding_noisy_spec.append(noisy_spec_i)
+        clean_spec = torch.stack(padding_clean_spec)
+        noisy_spec = torch.stack(padding_noisy_spec)
+        del padding_clean_spec, padding_noisy_spec
         
         patch = self.patchifier(noisy_spec)
         
