@@ -281,9 +281,9 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         clean_spec = torch.stack(padding_clean_spec)
         noisy_spec = torch.stack(padding_noisy_spec)
         del padding_clean_spec, padding_noisy_spec
-        print(noisy_spec.shape)
-        patch = self.patchifier(noisy_spec)
         
+        patch = self.patchifier(noisy_spec)
+        print(batch.shape)
         patch, _ = self.forward(
             input_patch=patch, input_patch_length=patch.size(2),
         )
