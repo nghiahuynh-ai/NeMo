@@ -308,17 +308,17 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
             denoised_spec[ith, :,clean_spec_len[ith]:] = 0.0
             
         loss_value = torch.nn.functional.mse_loss(clean_spec, denoised_spec)
-        ssim = ssim(denoised_spec.unsqueeze(1), clean_spec.unsqueeze(1))
-        psnr = psnr(denoised_spec, clean_spec)
+        ssim_score = ssim(denoised_spec.unsqueeze(1), clean_spec.unsqueeze(1))
+        psnr_score = psnr(denoised_spec, clean_spec)
 
-        tensorboard_logs = {'val_loss': loss_value, 'ssim': ssim, 'psnr': psnr}
+        tensorboard_logs = {'val_loss': loss_value, 'ssim': ssim_score, 'psnr': psnr_score}
         self.log_dict(tensorboard_logs)
         
-        return {'val_loss': loss_value, 'ssim': ssim, 'psnr': psnr, 'log': tensorboard_logs}
+        return {'val_loss': loss_value, 'ssim': ssim_score, 'psnr': psnr_score, 'log': tensorboard_logs}
 
     def multi_validation_epoch_end(self, outputs, dataloader_idx: int = 0):
         val_loss_mean = torch.stack([x['val_loss'] for x in outputs]).mean()
-        ssim_mean = torch.stack([x['ssim'] for x in outputs]).mean()
-        psnr_mean = torch.stack([x['psnr'] for x in outputs]).mean()
+        ssim_mean = torch.stack([x['ssim_score'] for x in outputs]).mean()
+        psnr_mean = torch.stack([x['psnr_score'] for x in outputs]).mean()
         tensorboard_logs = {'val_loss': val_loss_mean, 'ssim': ssim_mean, 'psnr': psnr_mean}
         return {'val_loss': val_loss_mean, 'ssim': ssim_mean, 'psnr': psnr_mean, 'log': tensorboard_logs}
