@@ -22,6 +22,7 @@ from omegaconf import DictConfig
 from pytorch_lightning import Trainer
 from einops.layers.torch import Rearrange
 from nemo.collections.asr.parts.submodules.noise_mixing import NoiseMixer
+from torchmetrics import StructuralSimilarityIndexMeasure, PeakSignalNoiseRatio
 
 from nemo.collections.asr.data import audio_to_text_dataset
 from nemo.collections.asr.data.audio_to_text_dali import DALIOutputs
@@ -64,9 +65,18 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         self.patch_size = patch_size
         n_feats = self._cfg.preprocessor.features
         
-        self.patchifier = Rearrange('b (h p1) (w p2) -> b (p1 p2) (h w)', p1=patch_size, p2=patch_size)
+        self.patchifier = nn.Sequential(
+            Rearrange('b (h p1) (w p2) -> b (h w) (p1 p2)', p1=patch_size, p2=patch_size),
+            nn.LayerNorm(patch_size**2),
+        )
         
-        self.unpatchifier = Rearrange('b (p1 p2) (h w) -> b (h p1) (w p2)', h=n_feats//patch_size, p1=patch_size, p2=patch_size)
+        
+        self.unpatchifier = nn.Sequential(
+            Rearrange('b (p1 p2) (h w) -> b (w p2) (h p1)', h=n_feats//patch_size, p1=patch_size, p2=patch_size),
+            nn.LayerNorm(n_feats),
+            nn.Linear(n_feats, n_feats),
+        )
+        
         
         self.noise_mixer = NoiseMixer(
             real_noise_filepath=self._cfg.real_noise.filepath,
@@ -74,6 +84,8 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
             white_noise_mean=self._cfg.white_noise.mean,
             white_noise_std=self._cfg.white_noise.std,
         )
+        
+        self.metrics = {'ssim': StructuralSimilarityIndexMeasure(), 'psnr': PeakSignalNoiseRatio()}
 
     def _setup_dataloader_from_config(self, config: Optional[Dict]):
         if 'augmentor' in config:
@@ -241,12 +253,13 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         del padding_clean_spec, padding_noisy_spec
         
         patch = self.patchifier(noisy_spec)
+        patch = patch.transpose(1, 2)
         
         patch_len = torch.tensor([patch.size(2)]*patch.size(0)).to(patch.device)
-        
         patch, _ = self.forward(input_patch=patch, input_patch_length=patch_len)
         
         denoised_spec = self.unpatchifier(patch)
+        denoised_spec = denoised_spec.transpose(1, 2)
         
         for ith in range(len(denoised_spec)):
             denoised_spec[ith, :,clean_spec_len[ith]:] = 0.0
@@ -285,22 +298,25 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         del padding_clean_spec, padding_noisy_spec
         
         patch = self.patchifier(noisy_spec)
+        patch = patch.transpose(1, 2)
         
         patch_len = torch.tensor([patch.size(2)]*patch.size(0)).to(patch.device)
-        
         patch, _ = self.forward(input_patch=patch, input_patch_length=patch_len)
         
         denoised_spec = self.unpatchifier(patch)
+        denoised_spec = denoised_spec.transpose(1, 2)
         
         for ith in range(len(denoised_spec)):
             denoised_spec[ith, :,clean_spec_len[ith]:] = 0.0
             
         loss_value = torch.nn.functional.mse_loss(clean_spec, denoised_spec)
+        ssim = self.metrics['ssim'](denoised_spec, clean_spec)
+        psnr = self.metrics['psnr'](denoised_spec, clean_spec)
 
-        tensorboard_logs = {'val_loss': loss_value}
+        tensorboard_logs = {'val_loss': loss_value, 'ssim': ssim, 'psnr': psnr}
         self.log_dict(tensorboard_logs)
         
-        return {'val_loss': loss_value, 'log': tensorboard_logs}
+        return {'val_loss': loss_value, 'ssim': ssim, 'psnr': psnr, 'log': tensorboard_logs}
 
     def multi_validation_epoch_end(self, outputs, dataloader_idx: int = 0):
         val_loss_mean = torch.stack([x['val_loss'] for x in outputs]).mean()
