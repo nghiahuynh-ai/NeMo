@@ -44,7 +44,9 @@ __all__ = ['Denoising']
 
 
 class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
-    """Base class for encoder-decoder models used for self-supervised encoder pre-training"""
+    @classmethod
+    def list_available_models(cls) -> List[PretrainedModelInfo]:
+        return []
 
     def __init__(self, cfg: DictConfig, trainer: Trainer = None):
         # Get global rank and total number of GPU workers for IterableDataset partitioning, if applicable
