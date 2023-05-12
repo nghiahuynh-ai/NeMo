@@ -300,7 +300,7 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         tensorboard_logs = {'val_loss': loss_value}
         self.log_dict(tensorboard_logs)
         
-        return {'log': tensorboard_logs}
+        return {'val_loss': loss_value, 'log': tensorboard_logs}
 
     def multi_validation_epoch_end(self, outputs, dataloader_idx: int = 0):
         val_loss_mean = torch.stack([x['val_loss'] for x in outputs]).mean()
