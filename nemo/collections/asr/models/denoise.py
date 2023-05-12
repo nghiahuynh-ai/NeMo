@@ -71,8 +71,8 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         self.noise_mixer = NoiseMixer(
             real_noise_filepath=self._cfg.real_noise.filepath,
             real_noise_snr=self._cfg.real_noise.snr,
-            white_noise_mean=self._cfg.real_noise.mean,
-            white_noise_std=self._cfg.real_noise.std,
+            white_noise_mean=self._cfg.white_noise.mean,
+            white_noise_std=self._cfg.white_noise.std,
         )
 
     def _setup_dataloader_from_config(self, config: Optional[Dict]):

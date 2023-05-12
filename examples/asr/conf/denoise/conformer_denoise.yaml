@@ -86,7 +86,7 @@ model:
 
     # Sub-sampling params
     subsampling: null # vggnet, striding, stacking or stacking_norm, dw_striding
-    subsampling_factor: 0 # must be power of 2 for striding and vggnet
+    subsampling_factor: 1 # must be power of 2 for striding and vggnet
     subsampling_conv_channels: -1 # -1 sets it to d_model
 
     # Feed forward module's params
