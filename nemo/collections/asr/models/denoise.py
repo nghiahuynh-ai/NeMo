@@ -231,7 +231,7 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         max_spec_len = math.ceil(max_spec_len / self.patch_size) * self.patch_size
         padding_clean_spec, padding_noisy_spec = [], []
         for ith in range(len(clean_spec)):
-            pad = (0, max_spec_len - clean_spec_len[ith])
+            pad = (0, max_spec_len - clean_spec[ith].size(2))
             clean_spec_i = torch.nn.functional.pad(clean_spec[ith], pad, value=0.0)
             padding_clean_spec.append(clean_spec_i)
             noisy_spec_i = torch.nn.functional.pad(noisy_spec[ith], pad, value=0.0)
@@ -273,7 +273,7 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         max_spec_len = math.ceil(max_spec_len / self.patch_size) * self.patch_size
         padding_clean_spec, padding_noisy_spec = [], []
         for ith in range(len(clean_spec)):
-            pad = (0, max_spec_len - clean_spec_len[ith])
+            pad = (0, max_spec_len - clean_spec[ith].size(2))
             clean_spec_i = torch.nn.functional.pad(clean_spec[ith], pad, value=0.0)
             padding_clean_spec.append(clean_spec_i)
             noisy_spec_i = torch.nn.functional.pad(noisy_spec[ith], pad, value=0.0)
