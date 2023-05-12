@@ -22,7 +22,9 @@ from omegaconf import DictConfig
 from pytorch_lightning import Trainer
 from einops.layers.torch import Rearrange
 from nemo.collections.asr.parts.submodules.noise_mixing import NoiseMixer
-from torchmetrics import StructuralSimilarityIndexMeasure, PeakSignalNoiseRatio
+# from torchmetrics import StructuralSimilarityIndexMeasure, PeakSignalNoiseRatio
+from torchmetrics.functional import structural_similarity_index_measure as ssim
+from torchmetrics.functional import peak_signal_noise_ratio as psnr
 
 from nemo.collections.asr.data import audio_to_text_dataset
 from nemo.collections.asr.data.audio_to_text_dali import DALIOutputs
@@ -70,13 +72,11 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
             nn.LayerNorm(patch_size**2),
         )
         
-        
         self.unpatchifier = nn.Sequential(
             Rearrange('b (p1 p2) (h w) -> b (w p2) (h p1)', h=n_feats//patch_size, p1=patch_size, p2=patch_size),
             nn.LayerNorm(n_feats),
             nn.Linear(n_feats, n_feats),
         )
-        
         
         self.noise_mixer = NoiseMixer(
             real_noise_filepath=self._cfg.real_noise.filepath,
@@ -84,11 +84,6 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
             white_noise_mean=self._cfg.white_noise.mean,
             white_noise_std=self._cfg.white_noise.std,
         )
-        
-        self.metrics = {
-            'ssim': StructuralSimilarityIndexMeasure().to(self.device), 
-            'psnr': PeakSignalNoiseRatio().to(self.device)
-        }
 
     def _setup_dataloader_from_config(self, config: Optional[Dict]):
         if 'augmentor' in config:
@@ -313,8 +308,8 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
             denoised_spec[ith, :,clean_spec_len[ith]:] = 0.0
             
         loss_value = torch.nn.functional.mse_loss(clean_spec, denoised_spec)
-        ssim = self.metrics['ssim'](denoised_spec.unsqueeze(1), clean_spec.unsqueeze(1))
-        psnr = self.metrics['psnr'](denoised_spec.unsqueeze(1), clean_spec.unsqueeze(1))
+        ssim = ssim(denoised_spec.unsqueeze(1), clean_spec.unsqueeze(1))
+        psnr = psnr(denoised_spec, clean_spec)
 
         tensorboard_logs = {'val_loss': loss_value, 'ssim': ssim, 'psnr': psnr}
         self.log_dict(tensorboard_logs)
