@@ -64,7 +64,7 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         self.patch_size = patch_size
         n_feats = self._cfg.preprocessor.features
         
-        self.patchifier = Rearrange('b (h p1) (w p2) -> b (h w) (p1 p2)', h=n_feats, p1=patch_size, p2=patch_size),
+        self.patchifier = Rearrange('b (h p1) (w p2) -> b (h w) (p1 p2)', h=n_feats, p1=patch_size, p2=patch_size)
         
         self.unpatchifier = Rearrange('b (h w) (p1 p2) -> b (h p1) (w p2)', h=n_feats, p1=patch_size, p2=patch_size)
         
