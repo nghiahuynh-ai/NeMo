@@ -64,9 +64,9 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         self.patch_size = patch_size
         n_feats = self._cfg.preprocessor.features
         
-        self.patchifier = Rearrange('b (h p1) (w p2) -> b (h w) (p1 p2)', p1=patch_size, p2=patch_size)
+        self.patchifier = Rearrange('b (h p1) (w p2) -> b (p1 p2) (h w)', p1=patch_size, p2=patch_size)
         
-        self.unpatchifier = Rearrange('b (h w) (p1 p2) -> b (h p1) (w p2)', h=n_feats//patch_size, p1=patch_size, p2=patch_size)
+        self.unpatchifier = Rearrange('b (p1 p2) (h w) -> b (h p1) (w p2)', h=n_feats//patch_size, p1=patch_size, p2=patch_size)
         
         self.noise_mixer = NoiseMixer(
             real_noise_filepath=self._cfg.real_noise.filepath,
@@ -283,7 +283,7 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         del padding_clean_spec, padding_noisy_spec
         
         patch = self.patchifier(noisy_spec)
-        print(patch.shape)
+        
         patch, _ = self.forward(
             input_patch=patch, input_patch_length=patch.size(2),
         )
