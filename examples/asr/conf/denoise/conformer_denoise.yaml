@@ -24,6 +24,7 @@ name: "Conformer-Denoising"
 
 model:
   sample_rate: 16000
+  conv_channels: 32
   patch_size: 16
   real_noise:
     filepath: null 
@@ -79,8 +80,8 @@ model:
 
   encoder:
     _target_: nemo.collections.asr.modules.ConformerEncoder
-    feat_in: 256
-    feat_out: 256 # you may set it if you need different output size other than the default d_model
+    feat_in: 8192
+    feat_out: 8192 # you may set it if you need different output size other than the default d_model
     n_layers: 18
     d_model: 512
 

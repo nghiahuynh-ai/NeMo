@@ -66,16 +66,30 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         patch_size = self._cfg.patch_size
         self.patch_size = patch_size
         n_feats = self._cfg.preprocessor.features
+        conv_channels = self._cfg.conv_channels
         
         self.patchifier = nn.Sequential(
-            Rearrange('b (h p1) (w p2) -> b (h w) (p1 p2)', p1=patch_size, p2=patch_size),
-            nn.LayerNorm(patch_size**2),
+            nn.Conv2d(
+                in_channels=1,
+                out_channels=conv_channels,
+                kernel_size=3,
+                stride=1,
+                padding=1,
+            ),
+            Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1=patch_size, p2=patch_size),
+            nn.LayerNorm(patch_size**2 * conv_channels),
         )
         
         self.unpatchifier = nn.Sequential(
-            Rearrange('b (p1 p2) (h w) -> b (w p2) (h p1)', h=n_feats//patch_size, p1=patch_size, p2=patch_size),
-            nn.LayerNorm(n_feats),
-            nn.Linear(n_feats, n_feats),
+            nn.LayerNorm(patch_size**2 * conv_channels),
+            Rearrange('b (p1 p2 c) (h w) -> b c (w p2) (h p1)', h=n_feats//patch_size, p1=patch_size, p2=patch_size),
+            nn.Conv2d(
+                in_channels=conv_channels,
+                out_channels=1,
+                kernel_size=3,
+                stride=1,
+                padding=1,
+            ),
         )
         
         self.noise_mixer = NoiseMixer(
@@ -257,7 +271,7 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         patch, _ = self.forward(input_patch=patch, input_patch_length=patch_len)
         
         denoised_spec = self.unpatchifier(patch)
-        denoised_spec = denoised_spec.transpose(1, 2)
+        denoised_spec = denoised_spec.squeeze(1).transpose(1, 2)
         
         for ith in range(len(denoised_spec)):
             denoised_spec[ith, :,clean_spec_len[ith]:] = 0.0
@@ -302,7 +316,7 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         patch, _ = self.forward(input_patch=patch, input_patch_length=patch_len)
         
         denoised_spec = self.unpatchifier(patch)
-        denoised_spec = denoised_spec.transpose(1, 2)
+        denoised_spec = denoised_spec.squeeze(1).transpose(1, 2)
         
         for ith in range(len(denoised_spec)):
             denoised_spec[ith, :,clean_spec_len[ith]:] = 0.0
