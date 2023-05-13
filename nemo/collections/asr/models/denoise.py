@@ -82,8 +82,6 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         )
         
         self.unpatchifier = nn.Sequential(
-            nn.LayerNorm(d_model),
-            nn.Linear(d_model, patch_size**2 * conv_channels),
             Rearrange('b (p1 p2 c) (h w) -> b c (w p2) (h p1)', h=n_feats//patch_size, p1=patch_size, p2=patch_size),
             nn.BatchNorm2d(num_features=conv_channels),
             nn.Conv2d(
