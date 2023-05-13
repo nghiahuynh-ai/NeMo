@@ -264,8 +264,9 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         noisy_spec = torch.stack(padding_noisy_spec)
         del padding_clean_spec, padding_noisy_spec
         
-        patch = self.patchifier(noisy_spec)
-        patch = patch.transpose(1, 2)
+        patch = noisy_spec.unsqueeze(1)
+        patch = self.patchifier(patch)
+        patch = patch.transpose(3, 2)
         
         patch_len = torch.tensor([patch.size(2)]*patch.size(0)).to(patch.device)
         patch, _ = self.forward(input_patch=patch, input_patch_length=patch_len)
@@ -309,8 +310,9 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         noisy_spec = torch.stack(padding_noisy_spec)
         del padding_clean_spec, padding_noisy_spec
         
-        patch = self.patchifier(noisy_spec)
-        patch = patch.transpose(1, 2)
+        patch = noisy_spec.unsqueeze(1)
+        patch = self.patchifier(patch)
+        patch = patch.transpose(3, 2)
         
         patch_len = torch.tensor([patch.size(2)]*patch.size(0)).to(patch.device)
         patch, _ = self.forward(input_patch=patch, input_patch_length=patch_len)
