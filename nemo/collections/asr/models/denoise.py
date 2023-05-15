@@ -274,10 +274,8 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         kernel_size=4
         stride=2
         padding=1
-        add_pad: float = (padding * 2) - kernel_size
-        one: float = 1.0
-        for i in range(self.repeat_num):
-            lengths = torch.div(lengths.to(dtype=torch.float) + add_pad, stride) + one
+        for i in range(int(math.log(self.scaling_factor, 2))):
+            lengths = torch.div(lengths.to(dtype=torch.float) + 2 * padding - kernel_size, stride) + 1
             lengths = torch.floor(lengths)
         return lengths.to(dtype=torch.int)
     
