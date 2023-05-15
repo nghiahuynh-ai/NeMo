@@ -22,7 +22,6 @@ from omegaconf import DictConfig
 from pytorch_lightning import Trainer
 from einops.layers.torch import Rearrange
 from nemo.collections.asr.parts.submodules.noise_mixing import NoiseMixer
-# from torchmetrics import StructuralSimilarityIndexMeasure, PeakSignalNoiseRatio
 from torchmetrics.functional import structural_similarity_index_measure as ssim
 from torchmetrics.functional import peak_signal_noise_ratio as psnr
 
