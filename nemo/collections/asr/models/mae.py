@@ -41,10 +41,10 @@ from nemo.core.neural_types import (
 )
 from nemo.utils import logging
 
-__all__ = ['Denoising']
+__all__ = ['MAE']
 
 
-class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
+class MAE(ModelPT, ASRModuleMixin, AccessMixin):
     @classmethod
     def list_available_models(cls) -> List[PretrainedModelInfo]:
         return []
@@ -58,8 +58,8 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
 
         super().__init__(cfg=cfg, trainer=trainer)
         
-        self.preprocessor = Denoising.from_config_dict(self._cfg.preprocessor)
-        self.encoder = Denoising.from_config_dict(self._cfg.encoder)
+        self.preprocessor = MAE.from_config_dict(self._cfg.preprocessor)
+        self.encoder = MAE.from_config_dict(self._cfg.encoder)
         
         patch_size = self._cfg.patch_size
         self.patch_size = patch_size
