@@ -323,7 +323,7 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         noisy_spec_ref = noisy_spec.clone()
         
         noisy_spec = self.forward_subenc(noisy_spec)
-        noisy_spec, _ = self.forward(noisy_spec=noisy_spec, length=self.calc_length(spec_length))
+        noisy_spec = self.forward(noisy_spec=noisy_spec, length=self.calc_length(spec_length))
         noisy_spec = self.forward_subdec(noisy_spec)
         
         denoised_spec = noisy_spec + noisy_spec_ref
@@ -349,7 +349,7 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         noisy_spec_ref = noisy_spec.clone()
         
         noisy_spec = self.forward_subenc(noisy_spec)
-        noisy_spec, _ = self.forward(noisy_spec=noisy_spec, length=self.calc_length(spec_length))
+        noisy_spec = self.forward(noisy_spec=noisy_spec, length=self.calc_length(spec_length))
         noisy_spec = self.forward_subdec(noisy_spec)
         
         denoised_spec = noisy_spec + noisy_spec_ref
