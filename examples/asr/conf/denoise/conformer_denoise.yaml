@@ -24,8 +24,8 @@ name: "Conformer-Denoising"
 
 model:
   sample_rate: 16000
-  conv_channels: 32
-  patch_size: 16
+  conv_channels: ${model.encoder.d_model}
+  scaling_factor: 16
   real_noise:
     filepath: null 
     snr: [0, 20] # signal to noise ratio bounds
