@@ -255,7 +255,7 @@ class MAE(ModelPT, ASRModuleMixin, AccessMixin):
         spec_reconstructed = spec_reconstructed.transpose(1, 2)
         
         for ith in range(len(spec_reconstructed)):
-            spec_reconstructed[ith, :,spec_reconstructed[ith]:] = 0.0
+            spec_reconstructed[ith, :,spec_orig_len[ith]:] = 0.0
             
         loss_value = torch.nn.functional.mse_loss(spec_reconstructed, spec_orig)
 
@@ -305,7 +305,7 @@ class MAE(ModelPT, ASRModuleMixin, AccessMixin):
         spec_reconstructed = spec_reconstructed.transpose(1, 2)
         
         for ith in range(len(spec_reconstructed)):
-            spec_reconstructed[ith, :,spec_reconstructed[ith]:] = 0.0
+            spec_reconstructed[ith, :,spec_orig_len[ith]:] = 0.0
             
         loss_value = torch.nn.functional.mse_loss(spec_reconstructed, spec_orig)
         ssim_score = ssim(spec_reconstructed.unsqueeze(1), spec_orig.unsqueeze(1))
