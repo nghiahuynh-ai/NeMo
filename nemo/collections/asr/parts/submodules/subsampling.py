@@ -202,7 +202,7 @@ class ConvSubsampling(torch.nn.Module):
                         )
                     )
                 layers.append(activation)
-                in_channels = conv_channels
+                in_channels = conv_channels    
         else:
             raise ValueError(f"Not valid sub-sampling: {subsampling}!")
 

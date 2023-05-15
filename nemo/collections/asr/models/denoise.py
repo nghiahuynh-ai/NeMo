@@ -62,35 +62,44 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         self.preprocessor = Denoising.from_config_dict(self._cfg.preprocessor)
         self.encoder = Denoising.from_config_dict(self._cfg.encoder)
         
-        patch_size = self._cfg.patch_size
-        self.patch_size = patch_size
         n_feats = self._cfg.preprocessor.features
-        conv_channels = self._cfg.conv_channels
+        self.conv_channels = self._cfg.conv_channels
         d_model = self._cfg.encoder.d_model
+        self.scaling_factor = self._cfg.scaling_factor
+        n_layers = int(math.log(self.scaling_factor, 2))
         
-        self.patchifier = nn.Sequential(
-            nn.Conv2d(
-                in_channels=1,
-                out_channels=conv_channels,
-                kernel_size=3,
-                stride=1,
-                padding=1,
-            ),
-            Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1=patch_size, p2=patch_size),
-            nn.LayerNorm(patch_size**2 * conv_channels),
-        )
+        subencoder = []
+        in_channels = 1
+        for _ in range(n_layers):
+            subencoder.append(
+                nn.Conv2d(
+                    in_channels=in_channels,
+                    out_channels=self.conv_channels,
+                    kernel_size=4,
+                    stride=2,
+                    padding=1,
+                )
+            )
+            in_channels = self.conv_channels
+        subencoder.append(nn.Linear(in_features=n_feats//self.scaling_factor * self.conv_channels, out_features=d_model))
+        self.subencoder = nn.ModuleList(subencoder)
         
-        self.unpatchifier = nn.Sequential(
-            Rearrange('b (p1 p2 c) (h w) -> b c (w p2) (h p1)', h=n_feats//patch_size, p1=patch_size, p2=patch_size),
-            nn.BatchNorm2d(num_features=conv_channels),
-            nn.Conv2d(
-                in_channels=conv_channels,
-                out_channels=1,
-                kernel_size=3,
-                stride=1,
-                padding=1,
-            ),
-        )
+        subdecoder = []
+        subdecoder.append(nn.Linear(in_features=d_model, out_features=n_feats//self.scaling_factor * self.conv_channels))
+        for ith in range(n_layers):
+            out_channels = 1 if ith == n_layers - 1 else self.conv_channels
+            subdecoder.append(
+                nn.ConvTranspose2d(
+                    in_channels=self.conv_channels,
+                    out_channels=out_channels,
+                    kernel_size=4,
+                    stride=2,
+                    padding=1,
+                )
+            )
+        self.subdecoder = nn.ModuleList(subdecoder)
+        
+        self.skip_connections = [] 
         
         self.noise_mixer = NoiseMixer(
             real_noise_filepath=self._cfg.real_noise.filepath,
@@ -239,20 +248,15 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
                     self._trainer.limit_val_batches
                     * ceil((len(self._validation_dl.dataset) / self.world_size) / val_data_config['batch_size'])
                 )
-
-    def forward(self, input_patch, input_patch_length):
-        return self.encoder(audio_signal=input_patch, length=input_patch_length)
-
-    def training_step(self, batch, batch_nb):
-        signal, signal_len, _, _ = batch
-        
+    
+    def process(self, signal, signal_len):
         clean_spec, clean_spec_len = self.preprocessor(input_signal=signal, length=signal_len)
         noisy_signal = self.noise_mixer(signal)
         noisy_spec, _ = self.preprocessor(input_signal=noisy_signal, length=signal_len)
-        del signal
+        del signal, noisy_signal
         
         max_spec_len = max(clean_spec_len).item()
-        max_spec_len = math.ceil(max_spec_len / self.patch_size) * self.patch_size
+        max_spec_len = math.ceil(max_spec_len / self.scaling_factor) * self.scaling_factor
         padding_clean_spec, padding_noisy_spec = [], []
         for ith in range(len(clean_spec)):
             pad = (0, max_spec_len - clean_spec[ith].size(1))
@@ -264,71 +268,102 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         noisy_spec = torch.stack(padding_noisy_spec)
         del padding_clean_spec, padding_noisy_spec
         
-        patch = noisy_spec.unsqueeze(1)
-        patch = self.patchifier(patch)
-        patch = patch.transpose(2, 1)
-        
-        patch_len = torch.tensor([patch.size(2)]*patch.size(0)).to(patch.device)
-        patch, _ = self.forward(input_patch=patch, input_patch_length=patch_len)
-        
-        denoised_spec = self.unpatchifier(patch)
-        denoised_spec = denoised_spec.squeeze(1).transpose(1, 2)
-        
+        return clean_spec, noisy_spec, clean_spec_len
+               
+    def calc_length(self, lengths):
+        kernel_size=4
+        stride=2
+        padding=1
+        add_pad: float = (padding * 2) - kernel_size
+        one: float = 1.0
+        for i in range(self.repeat_num):
+            lengths = torch.div(lengths.to(dtype=torch.float) + add_pad, stride) + one
+            lengths = torch.floor(lengths)
+        return lengths.to(dtype=torch.int)
+    
+    def forward_subenc(self, noisy_spec):
+        self.skip_connections.clear()
+        for ith, layer in enumerate(self.subencoder):
+            if ith == 0:
+                noisy_spec = noisy_spec.unsqueeze(1)
+            if ith == len(self.subencoder) - 1:
+                b, c, f, t = noisy_spec.shape
+                noisy_spec = noisy_spec.reshape(b, t, c * f)
+            noisy_spec = nn.functional.relu(layer(noisy_spec))
+            self.skip_connections.append(noisy_spec)
+        return noisy_spec
+    
+    def forward(self, noisy_spec, length):
+        noisy_spec = self.encoder(audio_signal=noisy_spec, length=length)
+        noisy_spec = noisy_spec.transpose(1, 2)
+        return noisy_spec
+    
+    def forward_subdec(self, noisy_spec):
+        for ith, layer in enumerate(self.subencoder):
+            if ith == 1:
+                b, t, d = noisy_spec.shape
+                noisy_spec = noisy_spec.reshape(b, self.conv_channels, d//self.conv_channels, t)
+            noisy_spec = noisy_spec + self.skip_connections.pop(-1)
+            if ith < len(self.subdecoder) - 1:
+                noisy_spec = nn.functional.relu(layer(noisy_spec))
+            else:
+                noisy_spec = layer(noisy_spec)
+        noisy_spec = noisy_spec.squeeze(0)
+        return noisy_spec
+    
+    def forward_loss(self, denoised_spec, clean_spec, spec_len):
         for ith in range(len(denoised_spec)):
-            denoised_spec[ith, :,clean_spec_len[ith]:] = 0.0
-            
-        loss_value = torch.nn.functional.mse_loss(clean_spec, denoised_spec)
+            denoised_spec[ith, :, spec_len[ith]:] = 0.0
+        return torch.nn.functional.mse_loss(denoised_spec, clean_spec)
+        
+
+    def training_step(self, batch, batch_nb):
+        signal, signal_len, _, _ = batch
+        
+        clean_spec, noisy_spec, spec_length = self.process(signal, signal_len)
+        noisy_spec_ref = noisy_spec.clone()
+        
+        noisy_spec = self.forward_subenc(noisy_spec)
+        noisy_spec, _ = self.forward(noisy_spec=noisy_spec, length=self.calc_length(spec_length))
+        noisy_spec = self.forward_subdec(noisy_spec)
+        
+        denoised_spec = noisy_spec + noisy_spec_ref
+        
+        loss_value = self.forward_loss(denoised_spec, clean_spec, spec_length)
 
         tensorboard_logs = {
             'learning_rate': self._optimizer.param_groups[0]['lr'],
             'global_step': self.trainer.global_step,
             'train_loss': loss_value,
         }
-        
         self.log_dict(tensorboard_logs)
 
         return {'loss': loss_value, 'log': tensorboard_logs}
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
+        
+        self.eval()
+        
         signal, signal_len, _, _ = batch
         
-        clean_spec, clean_spec_len = self.preprocessor(input_signal=signal, length=signal_len)
-        noisy_signal = self.noise_mixer(signal)
-        noisy_spec, _ = self.preprocessor(input_signal=noisy_signal, length=signal_len)
-        del signal
+        clean_spec, noisy_spec, spec_length = self.process(signal, signal_len)
+        noisy_spec_ref = noisy_spec.clone()
         
-        max_spec_len = max(clean_spec_len).item()
-        max_spec_len = math.ceil(max_spec_len / self.patch_size) * self.patch_size
-        padding_clean_spec, padding_noisy_spec = [], []
-        for ith in range(len(clean_spec)):
-            pad = (0, max_spec_len - clean_spec[ith].size(1))
-            clean_spec_i = torch.nn.functional.pad(clean_spec[ith], pad, value=0.0)
-            padding_clean_spec.append(clean_spec_i)
-            noisy_spec_i = torch.nn.functional.pad(noisy_spec[ith], pad, value=0.0)
-            padding_noisy_spec.append(noisy_spec_i)
-        clean_spec = torch.stack(padding_clean_spec)
-        noisy_spec = torch.stack(padding_noisy_spec)
-        del padding_clean_spec, padding_noisy_spec
+        noisy_spec = self.forward_subenc(noisy_spec)
+        noisy_spec, _ = self.forward(noisy_spec=noisy_spec, length=self.calc_length(spec_length))
+        noisy_spec = self.forward_subdec(noisy_spec)
         
-        patch = noisy_spec.unsqueeze(1)
-        patch = self.patchifier(patch)
-        patch = patch.transpose(2, 1)
+        denoised_spec = noisy_spec + noisy_spec_ref
         
-        patch_len = torch.tensor([patch.size(2)]*patch.size(0)).to(patch.device)
-        patch, _ = self.forward(input_patch=patch, input_patch_length=patch_len)
+        loss_value = self.forward_loss(denoised_spec, clean_spec, spec_length)
         
-        denoised_spec = self.unpatchifier(patch)
-        denoised_spec = denoised_spec.squeeze(1).transpose(1, 2)
-        
-        for ith in range(len(denoised_spec)):
-            denoised_spec[ith, :,clean_spec_len[ith]:] = 0.0
-            
-        loss_value = torch.nn.functional.mse_loss(clean_spec, denoised_spec)
-        ssim_score = ssim(denoised_spec.unsqueeze(1), clean_spec.unsqueeze(1))
+        ssim_score = ssim(denoised_spec, clean_spec)
         psnr_score = psnr(denoised_spec, clean_spec)
 
         tensorboard_logs = {'val_loss': loss_value, 'ssim_score': ssim_score, 'psnr_score': psnr_score}
         self.log_dict(tensorboard_logs)
+        
+        self.train()
         
         return {
             'val_loss': loss_value, 
