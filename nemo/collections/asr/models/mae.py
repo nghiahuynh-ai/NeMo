@@ -224,9 +224,22 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
     def training_step(self, batch, batch_nb):
         signal, signal_len, _, _ = batch
         
-        spec_orig, _ = self.preprocessor(input_signal=signal, length=signal_len)
+        spec_orig, spec_orig_len = self.preprocessor(input_signal=signal, length=signal_len)
         spec_masked = spec_orig.clone().detach()
         del signal
+        
+        max_spec_len = max(spec_orig_len).item()
+        max_spec_len = math.ceil(max_spec_len / self.patch_size) * self.patch_size
+        padding_spec_orig, padding_spec_masked = [], []
+        for ith in range(len(spec_orig)):
+            pad = (0, max_spec_len - spec_orig[ith].size(1))
+            spec_orig_i = torch.nn.functional.pad(spec_orig[ith], pad, value=0.0)
+            padding_spec_orig.append(spec_orig_i)
+            spec_masked_i = torch.nn.functional.pad(spec_masked[ith], pad, value=0.0)
+            padding_spec_masked.append(spec_masked_i)
+        spec_orig = torch.stack(padding_spec_orig)
+        spec_masked = torch.stack(padding_spec_masked)
+        del padding_spec_orig, padding_spec_masked
         
         patch = self.patchifier(spec_masked)
         b, n_patches, patch_size = patch.shape
@@ -257,44 +270,51 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         return {'loss': loss_value, 'log': tensorboard_logs}
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
+        self.eval()
+        
         signal, signal_len, _, _ = batch
         
-        clean_spec, clean_spec_len = self.preprocessor(input_signal=signal, length=signal_len)
-        noisy_signal = self.noise_mixer(signal)
-        noisy_spec, _ = self.preprocessor(input_signal=noisy_signal, length=signal_len)
+        spec_orig, spec_orig_len = self.preprocessor(input_signal=signal, length=signal_len)
+        spec_masked = spec_orig.clone().detach()
         del signal
         
-        max_spec_len = max(clean_spec_len).item()
+        max_spec_len = max(spec_orig_len).item()
         max_spec_len = math.ceil(max_spec_len / self.patch_size) * self.patch_size
-        padding_clean_spec, padding_noisy_spec = [], []
-        for ith in range(len(clean_spec)):
-            pad = (0, max_spec_len - clean_spec[ith].size(1))
-            clean_spec_i = torch.nn.functional.pad(clean_spec[ith], pad, value=0.0)
-            padding_clean_spec.append(clean_spec_i)
-            noisy_spec_i = torch.nn.functional.pad(noisy_spec[ith], pad, value=0.0)
-            padding_noisy_spec.append(noisy_spec_i)
-        clean_spec = torch.stack(padding_clean_spec)
-        noisy_spec = torch.stack(padding_noisy_spec)
-        del padding_clean_spec, padding_noisy_spec
+        padding_spec_orig, padding_spec_masked = [], []
+        for ith in range(len(spec_orig)):
+            pad = (0, max_spec_len - spec_orig[ith].size(1))
+            spec_orig_i = torch.nn.functional.pad(spec_orig[ith], pad, value=0.0)
+            padding_spec_orig.append(spec_orig_i)
+            spec_masked_i = torch.nn.functional.pad(spec_masked[ith], pad, value=0.0)
+            padding_spec_masked.append(spec_masked_i)
+        spec_orig = torch.stack(padding_spec_orig)
+        spec_masked = torch.stack(padding_spec_masked)
+        del padding_spec_orig, padding_spec_masked
         
-        patch = self.patchifier(noisy_spec)
+        patch = self.patchifier(spec_masked)
+        b, n_patches, patch_size = patch.shape
+        mask = torch.rand(b, n_patches, device=patch.device).unsqueeze(2).expand(b, n_patches, patch_size)
+        mask = mask > self.mask_ratio
+        patch = mask * patch
         patch = patch.transpose(1, 2)
         
         patch_len = torch.tensor([patch.size(2)]*patch.size(0)).to(patch.device)
         patch, _ = self.forward(input_patch=patch, input_patch_length=patch_len)
         
-        denoised_spec = self.unpatchifier(patch)
-        denoised_spec = denoised_spec.transpose(1, 2)
+        spec_reconstructed = self.unpatchifier(patch)
+        spec_reconstructed = spec_reconstructed.transpose(1, 2)
         
-        for ith in range(len(denoised_spec)):
-            denoised_spec[ith, :,clean_spec_len[ith]:] = 0.0
+        for ith in range(len(spec_reconstructed)):
+            spec_reconstructed[ith, :,spec_reconstructed[ith]:] = 0.0
             
-        loss_value = torch.nn.functional.mse_loss(clean_spec, denoised_spec)
-        ssim_score = ssim(denoised_spec.unsqueeze(1), clean_spec.unsqueeze(1))
-        psnr_score = psnr(denoised_spec, clean_spec)
+        loss_value = torch.nn.functional.mse_loss(spec_reconstructed, spec_orig)
+        ssim_score = ssim(spec_reconstructed.unsqueeze(1), spec_orig.unsqueeze(1))
+        psnr_score = psnr(spec_reconstructed, spec_orig)
 
         tensorboard_logs = {'val_loss': loss_value, 'ssim_score': ssim_score, 'psnr_score': psnr_score}
         self.log_dict(tensorboard_logs)
+        
+        self.train()
         
         return {
             'val_loss': loss_value, 
