@@ -298,6 +298,7 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         return noisy_spec
     
     def forward_subdec(self, noisy_spec):
+        noisy_spec = noisy_spec.transpose(1, 2)
         for ith, layer in enumerate(self.subencoder):
             if ith == 1:
                 b, t, d = noisy_spec.shape
