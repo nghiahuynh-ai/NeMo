@@ -353,7 +353,9 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         noisy_spec_ref = noisy_spec.clone()
         
         noisy_spec = self.forward_subenc(noisy_spec)
+        print(noisy_spec.shape)
         noisy_spec = self.forward(noisy_spec=noisy_spec, length=self.calc_length(spec_length))
+        print(noisy_spec.shape)
         noisy_spec = self.forward_subdec(noisy_spec)
         
         denoised_spec = noisy_spec + noisy_spec_ref
