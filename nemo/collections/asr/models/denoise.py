@@ -281,15 +281,16 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
     
     def forward_subenc(self, noisy_spec):
         self.skip_connections.clear()
+        noisy_spec = noisy_spec.transpose(1, 2)
         for ith, layer in enumerate(self.subencoder):
             if ith == 0:
                 noisy_spec = noisy_spec.unsqueeze(1)
             if ith == len(self.subencoder) - 1:
-                b, c, f, t = noisy_spec.shape
+                b, c, t, f = noisy_spec.shape
                 noisy_spec = noisy_spec.reshape(b, t, c * f)
             noisy_spec = nn.functional.relu(layer(noisy_spec))
             self.skip_connections.append(noisy_spec)
-        noisy_spec = noisy_spec.transpose(1, 2)
+        # noisy_spec = noisy_spec.transpose(1, 2)
         return noisy_spec
     
     def forward(self, noisy_spec, length):
