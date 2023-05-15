@@ -66,8 +66,6 @@ class MAE(ModelPT, ASRModuleMixin, AccessMixin):
         patch_size = self._cfg.patch_size
         self.patch_size = patch_size
         n_feats = self._cfg.preprocessor.features
-        conv_channels = self._cfg.conv_channels
-        d_model = self._cfg.encoder.d_model
         
         self.patchifier = nn.Sequential(
             Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1=patch_size, p2=patch_size),
@@ -250,7 +248,6 @@ class MAE(ModelPT, ASRModuleMixin, AccessMixin):
         noisy_spec = torch.stack(padding_noisy_spec)
         del padding_clean_spec, padding_noisy_spec
         
-        patch = noisy_spec.unsqueeze(1)
         patch = self.patchifier(patch)
         patch = patch.transpose(2, 1)
         
@@ -258,7 +255,7 @@ class MAE(ModelPT, ASRModuleMixin, AccessMixin):
         patch, _ = self.forward(input_patch=patch, input_patch_length=patch_len)
         
         denoised_spec = self.unpatchifier(patch)
-        denoised_spec = denoised_spec.squeeze(1).transpose(1, 2)
+        denoised_spec = denoised_spec.transpose(1, 2)
         
         for ith in range(len(denoised_spec)):
             denoised_spec[ith, :,clean_spec_len[ith]:] = 0.0
@@ -296,7 +293,6 @@ class MAE(ModelPT, ASRModuleMixin, AccessMixin):
         noisy_spec = torch.stack(padding_noisy_spec)
         del padding_clean_spec, padding_noisy_spec
         
-        patch = noisy_spec.unsqueeze(1)
         patch = self.patchifier(patch)
         patch = patch.transpose(2, 1)
         
@@ -304,7 +300,7 @@ class MAE(ModelPT, ASRModuleMixin, AccessMixin):
         patch, _ = self.forward(input_patch=patch, input_patch_length=patch_len)
         
         denoised_spec = self.unpatchifier(patch)
-        denoised_spec = denoised_spec.squeeze(1).transpose(1, 2)
+        denoised_spec = denoised_spec.transpose(1, 2)
         
         for ith in range(len(denoised_spec)):
             denoised_spec[ith, :,clean_spec_len[ith]:] = 0.0
