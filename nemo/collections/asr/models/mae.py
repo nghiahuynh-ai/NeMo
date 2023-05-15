@@ -21,8 +21,6 @@ import torch.nn as nn
 from omegaconf import DictConfig
 from pytorch_lightning import Trainer
 from einops.layers.torch import Rearrange
-from nemo.collections.asr.parts.submodules.noise_mixing import NoiseMixer
-# from torchmetrics import StructuralSimilarityIndexMeasure, PeakSignalNoiseRatio
 from torchmetrics.functional import structural_similarity_index_measure as ssim
 from torchmetrics.functional import peak_signal_noise_ratio as psnr
 
@@ -46,7 +44,7 @@ from nemo.utils import logging
 __all__ = ['Denoising']
 
 
-class MAE(ModelPT, ASRModuleMixin, AccessMixin):
+class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
     @classmethod
     def list_available_models(cls) -> List[PretrainedModelInfo]:
         return []
@@ -60,27 +58,23 @@ class MAE(ModelPT, ASRModuleMixin, AccessMixin):
 
         super().__init__(cfg=cfg, trainer=trainer)
         
-        self.preprocessor = MAE.from_config_dict(self._cfg.preprocessor)
-        self.encoder = MAE.from_config_dict(self._cfg.encoder)
+        self.preprocessor = Denoising.from_config_dict(self._cfg.preprocessor)
+        self.encoder = Denoising.from_config_dict(self._cfg.encoder)
         
         patch_size = self._cfg.patch_size
         self.patch_size = patch_size
         n_feats = self._cfg.preprocessor.features
+        self.mask_ratio = self._cfg.mask_ratio
         
         self.patchifier = nn.Sequential(
-            Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1=patch_size, p2=patch_size),
+            Rearrange('b (h p1) (w p2) -> b (h w) (p1 p2)', p1=patch_size, p2=patch_size),
             nn.LayerNorm(patch_size**2),
         )
         
         self.unpatchifier = nn.Sequential(
-            Rearrange('b (p1 p2 c) (h w) -> b c (w p2) (h p1)', h=n_feats//patch_size, p1=patch_size, p2=patch_size),
-        )
-        
-        self.noise_mixer = NoiseMixer(
-            real_noise_filepath=self._cfg.real_noise.filepath,
-            real_noise_snr=self._cfg.real_noise.snr,
-            white_noise_mean=self._cfg.white_noise.mean,
-            white_noise_std=self._cfg.white_noise.std,
+            Rearrange('b (p1 p2) (h w) -> b (w p2) (h p1)', h=n_feats//patch_size, p1=patch_size, p2=patch_size),
+            nn.LayerNorm(n_feats),
+            nn.Linear(n_feats, n_feats),
         )
 
     def _setup_dataloader_from_config(self, config: Optional[Dict]):
@@ -230,37 +224,27 @@ class MAE(ModelPT, ASRModuleMixin, AccessMixin):
     def training_step(self, batch, batch_nb):
         signal, signal_len, _, _ = batch
         
-        clean_spec, clean_spec_len = self.preprocessor(input_signal=signal, length=signal_len)
-        noisy_signal = self.noise_mixer(signal)
-        noisy_spec, _ = self.preprocessor(input_signal=noisy_signal, length=signal_len)
+        spec_orig, _ = self.preprocessor(input_signal=signal, length=signal_len)
+        spec_masked = spec_orig.clone().detach()
         del signal
         
-        max_spec_len = max(clean_spec_len).item()
-        max_spec_len = math.ceil(max_spec_len / self.patch_size) * self.patch_size
-        padding_clean_spec, padding_noisy_spec = [], []
-        for ith in range(len(clean_spec)):
-            pad = (0, max_spec_len - clean_spec[ith].size(1))
-            clean_spec_i = torch.nn.functional.pad(clean_spec[ith], pad, value=0.0)
-            padding_clean_spec.append(clean_spec_i)
-            noisy_spec_i = torch.nn.functional.pad(noisy_spec[ith], pad, value=0.0)
-            padding_noisy_spec.append(noisy_spec_i)
-        clean_spec = torch.stack(padding_clean_spec)
-        noisy_spec = torch.stack(padding_noisy_spec)
-        del padding_clean_spec, padding_noisy_spec
-        
-        patch = self.patchifier(patch)
-        patch = patch.transpose(2, 1)
+        patch = self.patchifier(spec_masked)
+        b, n_patches, patch_size = patch.shape
+        mask = torch.rand(b, n_patches, device=patch.device).unsqueeze(2).expand(b, n_patches, patch_size)
+        mask = mask > self.mask_ratio
+        patch = mask * patch
+        patch = patch.transpose(1, 2)
         
         patch_len = torch.tensor([patch.size(2)]*patch.size(0)).to(patch.device)
         patch, _ = self.forward(input_patch=patch, input_patch_length=patch_len)
         
-        denoised_spec = self.unpatchifier(patch)
-        denoised_spec = denoised_spec.transpose(1, 2)
+        spec_reconstructed = self.unpatchifier(patch)
+        spec_reconstructed = spec_reconstructed.transpose(1, 2)
         
-        for ith in range(len(denoised_spec)):
-            denoised_spec[ith, :,clean_spec_len[ith]:] = 0.0
+        for ith in range(len(spec_reconstructed)):
+            spec_reconstructed[ith, :,spec_reconstructed[ith]:] = 0.0
             
-        loss_value = torch.nn.functional.mse_loss(clean_spec, denoised_spec)
+        loss_value = torch.nn.functional.mse_loss(spec_reconstructed, spec_orig)
 
         tensorboard_logs = {
             'learning_rate': self._optimizer.param_groups[0]['lr'],
@@ -293,8 +277,8 @@ class MAE(ModelPT, ASRModuleMixin, AccessMixin):
         noisy_spec = torch.stack(padding_noisy_spec)
         del padding_clean_spec, padding_noisy_spec
         
-        patch = self.patchifier(patch)
-        patch = patch.transpose(2, 1)
+        patch = self.patchifier(noisy_spec)
+        patch = patch.transpose(1, 2)
         
         patch_len = torch.tensor([patch.size(2)]*patch.size(0)).to(patch.device)
         patch, _ = self.forward(input_patch=patch, input_patch_length=patch_len)

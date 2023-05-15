@@ -25,12 +25,7 @@ name: "Conformer-Denoising"
 model:
   sample_rate: 16000
   patch_size: 16
-  real_noise:
-    filepath: null 
-    snr: [0, 20] # signal to noise ratio bounds
-  white_noise:
-    mean: 0.0 
-    std: [0.005, 0.02] # std bounds
+  mask_ratio: 0.8
 
   train_ds:
     manifest_filepath: ???
