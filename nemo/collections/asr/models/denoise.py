@@ -307,7 +307,7 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
                 noisy_spec = nn.functional.relu(layer(noisy_spec))
             else:
                 noisy_spec = layer(noisy_spec)
-        noisy_spec = noisy_spec.squeeze(0)
+        noisy_spec = noisy_spec.squeeze(1)
         return noisy_spec
     
     def forward_loss(self, denoised_spec, clean_spec, spec_len):
