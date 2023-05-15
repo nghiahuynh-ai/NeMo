@@ -293,7 +293,7 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         return noisy_spec
     
     def forward(self, noisy_spec, length):
-        noisy_spec = self.encoder(audio_signal=noisy_spec, length=length)
+        noisy_spec, _ = self.encoder(audio_signal=noisy_spec, length=length)
         noisy_spec = noisy_spec.transpose(1, 2)
         return noisy_spec
     
