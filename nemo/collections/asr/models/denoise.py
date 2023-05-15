@@ -290,7 +290,7 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
                 noisy_spec = noisy_spec.reshape(b, t, c * f)
             noisy_spec = nn.functional.relu(layer(noisy_spec))
             self.skip_connections.append(noisy_spec)
-        # noisy_spec = noisy_spec.transpose(1, 2)
+        noisy_spec = noisy_spec.transpose(1, 2)
         return noisy_spec
     
     def forward(self, noisy_spec, length):
@@ -325,7 +325,9 @@ class Denoising(ModelPT, ASRModuleMixin, AccessMixin):
         noisy_spec_ref = noisy_spec.clone()
         
         noisy_spec = self.forward_subenc(noisy_spec)
+        print(noisy_spec.shape)
         noisy_spec = self.forward(noisy_spec=noisy_spec, length=self.calc_length(spec_length))
+        print(noisy_spec.shape)
         noisy_spec = self.forward_subdec(noisy_spec)
         
         denoised_spec = noisy_spec + noisy_spec_ref
