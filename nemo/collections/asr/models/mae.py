@@ -70,27 +70,12 @@ class MAE(ModelPT, ASRModuleMixin, AccessMixin):
         d_model = self._cfg.encoder.d_model
         
         self.patchifier = nn.Sequential(
-            nn.Conv2d(
-                in_channels=1,
-                out_channels=conv_channels,
-                kernel_size=3,
-                stride=1,
-                padding=1,
-            ),
             Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1=patch_size, p2=patch_size),
-            nn.LayerNorm(patch_size**2 * conv_channels),
+            nn.LayerNorm(patch_size**2),
         )
         
         self.unpatchifier = nn.Sequential(
             Rearrange('b (p1 p2 c) (h w) -> b c (w p2) (h p1)', h=n_feats//patch_size, p1=patch_size, p2=patch_size),
-            nn.BatchNorm2d(num_features=conv_channels),
-            nn.Conv2d(
-                in_channels=conv_channels,
-                out_channels=1,
-                kernel_size=3,
-                stride=1,
-                padding=1,
-            ),
         )
         
         self.noise_mixer = NoiseMixer(
