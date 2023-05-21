@@ -299,8 +299,7 @@ class ReconstructSSL(ModelPT, ASRModuleMixin, AccessMixin):
             spec_reconstruct[ith, :,spec_orig_len[ith]:] = 0.0
             
         loss_value = torch.nn.functional.mse_loss(spec_reconstruct, spec_orig)
-            
-        loss_value = torch.nn.functional.mse_loss(spec_reconstruct, spec_orig)
+
         ssim_score = ssim(spec_reconstruct.unsqueeze(1), spec_orig.unsqueeze(1))
         psnr_score = psnr(spec_reconstruct, spec_orig)
 
@@ -389,7 +388,6 @@ class SubDecoder(nn.Module):
             x = layer(x)
 
         x = x.squeeze(1)
-        x = x.transpose(1, 2)
         
         return x
     
