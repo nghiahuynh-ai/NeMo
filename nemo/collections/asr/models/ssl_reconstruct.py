@@ -236,7 +236,7 @@ class ReconstructSSL(ModelPT, ASRModuleMixin, AccessMixin):
         spec_masked = torch.stack(padding_spec_masked)
         del padding_spec_orig, padding_spec_masked
         
-        spec_masked = self.spec_augmentation(spec_masked)
+        spec_masked = self.spec_augmentation(input_spec=spec_masked, length=spec_orig_len)
         encoded, _ = self.forward(input_spec=spec_masked, input_spec_length=spec_orig_len)
         encoded = encoded.transpose(1, 2)
         
