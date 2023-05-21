@@ -237,6 +237,8 @@ class ReconstructSSL(ModelPT, ASRModuleMixin, AccessMixin):
         del padding_spec_orig, padding_spec_masked
         
         spec_masked = self.spec_augmentation(input_spec=spec_masked, length=spec_orig_len)
+        spec_masked = self.subencoder(spec_masked)
+        
         encoded, _ = self.forward(input_spec=spec_masked, input_spec_length=spec_orig_len)
         encoded = encoded.transpose(1, 2)
         
@@ -281,12 +283,12 @@ class ReconstructSSL(ModelPT, ASRModuleMixin, AccessMixin):
         del padding_spec_orig, padding_spec_masked
         
         spec_masked = self.spec_augmentation(input_spec=spec_masked, length=spec_orig_len)
-        spec_masked = self.subdecoder(spec_masked, self.subencoder.enc_out)
+        spec_masked = self.subencoder(spec_masked)
         
         encoded, _ = self.forward(input_spec=spec_masked, input_spec_length=spec_orig_len)
         encoded = encoded.transpose(1, 2)
         
-        spec_reconstruct = self.subdecoder(encoded)
+        spec_reconstruct = self.subdecoder(encoded, self.subencoder.enc_out)
         spec_reconstruct = spec_reconstruct.transpose(1, 2)
         
         for ith in range(len(spec_reconstruct)):
