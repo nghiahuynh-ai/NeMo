@@ -352,6 +352,7 @@ class SubEncoder(nn.Module):
             self.enc_out = [x] + self.enc_out
         
         b, c, t, d = x.shape
+        print(x.shape)
         x = x.transpose(1, 2).reshape(b, t, -1)
         x = self.proj_out(x)
         
