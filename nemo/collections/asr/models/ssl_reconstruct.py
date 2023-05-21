@@ -70,7 +70,7 @@ class ReconstructSSL(ModelPT, ASRModuleMixin, AccessMixin):
         dim_out = self._cfg.dim_out
         
         self.subencoder = SubEncoder(self.scaling_factor, conv_channels, n_resblocks, dim_in, dim_out)
-        self.subdecoder = SubDecoder(self.scaling_factor, conv_channels, n_resblocks, dim_in, dim_out)
+        self.subdecoder = SubDecoder(self.scaling_factor, conv_channels, n_resblocks, dim_out, dim_in)
 
     def _setup_dataloader_from_config(self, config: Optional[Dict]):
         if 'augmentor' in config:
@@ -291,7 +291,7 @@ class ReconstructSSL(ModelPT, ASRModuleMixin, AccessMixin):
         spec_masked = spec_masked.transpose(1, 2)
         encoded, _ = self.forward(input_spec=spec_masked, input_spec_length=spec_orig_len)
         encoded = encoded.transpose(1, 2)
-        print(encoded.shape)
+
         spec_reconstruct = self.subdecoder(encoded, self.subencoder.enc_out)
         spec_reconstruct = spec_reconstruct.transpose(1, 2)
         
