@@ -19,6 +19,7 @@ import torch.nn as nn
 from torch.nn import LayerNorm
 
 from nemo.collections.asr.parts.submodules.causal_convs import CausalConv2D
+from nemo.collections.asr.parts.submodules.residual import Residual
 from nemo.utils import avoid_bfloat16_autocast_context
 
 
@@ -203,6 +204,43 @@ class ConvSubsampling(torch.nn.Module):
                     )
                 layers.append(activation)
                 in_channels = conv_channels
+                
+        elif subsampling == 'subencoder':
+            self._stride = 2
+            self._kernel_size = 4
+            self._ceil_mode = False
+            self._left_padding = (self._kernel_size - 1) // 2
+            self._right_padding = (self._kernel_size - 1) // 2
+            
+            for i in range(self._sampling_num):
+                self.layers.append(
+                    nn.Sequential(
+                        nn.Conv2d(
+                            in_channels=in_channels, 
+                            out_channels=conv_channels, 
+                            kernel_size=4, 
+                            stride=2, 
+                            padding=1
+                        ),
+                        nn.BatchNorm2d(num_features=conv_channels),
+                        nn.ReLU(),
+                        Residual(
+                            nn.Sequential(
+                                nn.Conv2d(
+                                    in_channels=conv_channels,
+                                    out_channels=conv_channels,
+                                    kernel_size=3,
+                                    stride=1,
+                                    padding=1,
+                                ),
+                                nn.BatchNorm2d(num_features=conv_channels),
+                            )
+                        ),
+                        nn.ReLU(),
+                    )
+                )
+                in_channels = conv_channels
+                      
         else:
             raise ValueError(f"Not valid sub-sampling: {subsampling}!")
 
