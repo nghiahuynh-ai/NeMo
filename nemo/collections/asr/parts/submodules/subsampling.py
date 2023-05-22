@@ -213,7 +213,7 @@ class ConvSubsampling(torch.nn.Module):
             self._right_padding = (self._kernel_size - 1) // 2
             
             for i in range(self._sampling_num):
-                self.layers.append(
+                layers.append(
                     nn.Sequential(
                         nn.Conv2d(
                             in_channels=in_channels, 
